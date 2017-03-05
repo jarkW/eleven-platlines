@@ -34,7 +34,8 @@ class StreetInfo
     
     PImage summaryStreetSnap;
     
-    final static int STREET_BACKGROUND = #BFBFBF;
+    //final static int STREET_BACKGROUND = #BFBFBF; // grey
+    final static int STREET_BACKGROUND = #FFFFFF; // white
     final static int PLATLINE_COLOUR =  #FF002B;
     final static int PLATLINE_PURPLE = #9717E8;
     
@@ -477,7 +478,9 @@ class StreetInfo
         for (i = 0; i < platlines.size(); i++)
         {
             //platlines.get(i).drawLine(summaryStreetSnap, PLATLINE_COLOUR);
-            platlines.get(i).drawAliasedLine(summaryStreetSnap, PLATLINE_COLOUR);
+            //platlines.get(i).drawAliasedLine(summaryStreetSnap, PLATLINE_COLOUR);
+            //platlines.get(i).drawMyAliasedLine(summaryStreetSnap, PLATLINE_COLOUR);
+            platlines.get(i).drawAllLine(summaryStreetSnap, PLATLINE_COLOUR);
         } 
         // Update pixels
         summaryStreetSnap.updatePixels();
@@ -490,7 +493,7 @@ class StreetInfo
             if (!itemInfo.get(i).readSkipThisItem())
             {
                 // Item is patch/tree - so put image of spice tree at this x,y
-                treeCrossesPlatline = addSpiceTreeImage(itemInfo.get(i).readItemX(), itemInfo.get(i).readItemY());
+                // ??????treeCrossesPlatline = addSpiceTreeImage(itemInfo.get(i).readItemX(), itemInfo.get(i).readItemY());
             }
             // Store the result - will include details of whether tree crosses the plat line or not
             itemResults.add(new SummaryChanges(itemInfo.get(i), treeCrossesPlatline));
@@ -585,7 +588,15 @@ class StreetInfo
                         {
                             // Set flag, and colour plat line purple so can clearly see where interface
                             platlineCrossed = true;
-                            summaryStreetSnap.pixels[streetLoc] = PLATLINE_PURPLE;
+                            // Apply the same anti-aliasing as already present in this pixel
+                            // But then we lose the purple colour ...
+                            float aStreet = alpha(summaryStreetSnap.pixels[streetLoc]);
+                            color cStreet = color(PLATLINE_PURPLE, aStreet);
+                            //summaryStreetSnap.pixels[streetLoc] = cStreet;
+                            //summaryStreetSnap.pixels[streetLoc] = PLATLINE_PURPLE;
+                            
+                            // Merge the two pixels where they overlap
+                            summaryStreetSnap.pixels[streetLoc] = lerpColor(spiceTreeImage.pixels[loc], summaryStreetSnap.pixels[streetLoc], 0.5);                            
                         }
                         else
                         {
@@ -597,6 +608,8 @@ class StreetInfo
         }
         return platlineCrossed;
     }
+    
+    
     
     boolean itemIsTree(int n)
     {
@@ -957,10 +970,16 @@ class StreetInfo
     
     class Platline
     {
+        // Eleven co-ordinates
         int startX;
         int startY;
         int endX;
         int endY;
+        // processing format co-ords
+        int procStartX;
+        int procStartY;
+        int procEndX;
+        int procEndY;
         Platline(int x1, int y1, int x2, int y2)
         {
             // Want to save this so that the line always goes from left to right
@@ -978,6 +997,12 @@ class StreetInfo
                 endX = x2;
                 endY = y2;
             }
+            
+            // Convert into Proccessing pixel array x,y values (i.e. 0,0 is top LH corner)
+            procStartX = startX + geoWidth/2;
+            procStartY = startY + geoHeight;
+            procEndX = endX + geoWidth/2;
+            procEndY = endY + geoHeight;
         }
  /*
         void drawAliasedLine(PImage streetImage, int lineColour)
@@ -987,24 +1012,20 @@ class StreetInfo
             int loc;
             float m;
         
-            // Convert into Proccessing pixel array x,y values (i.e. 0,0 is top LH corner)
-            float x1 = startX + geoWidth/2;
-            float y1 = startY + geoHeight;
-            float x2 = endX + geoWidth/2;
-            float y2 = endY + geoHeight;
-        
             printToFile.printDebugLine(this, "Drawing line from x,y " + startX + "," + startY + " to x,y " + endX + "," + endY, 1);
-            printToFile.printDebugLine(this, "Also = line from x,y " + x1 + "," + y1 + " to x,y " + x2 + "," + y2, 1);
+            printToFile.printDebugLine(this, "Also = line from x,y " + procStartX + "," + procStartY + " to x,y " + procEndX + "," + procEndY, 1);
         
             // Slope of line between 2 points
-            m = (y2 - y1)/(x2 - x1);
+            //m = (y2 - y1)/(x2 - x1);
+            m = (procEndY - procStartY)/(procEndX - procStartX);
+            
             printToFile.printDebugLine(this, " m = " + m, 1);
             // y = m(x - x1) + y1
             // Working from x1 to x2, recalculate y at that point and mark pixel at that location
-            for (i = 0; i < x2 - x1 + 1; i++)
+            for (i = 0; i < procStartY - procStartX + 1; i++)
             {
-                float x = x1 + i;
-                float y = (m * (x - x1)) + y1;
+                float x = procStartX + i;
+                float y = (m * (x - procStartX)) + procStartY;
                 
                 // Now try to do anti-aliased line
                 // Have the main pixel at y, but the depth of colour depends on how close it is to integer value. 
@@ -1037,7 +1058,28 @@ class StreetInfo
                 }       
             }
         }
-*/        
+*/  
+        void drawAllLine(PImage streetImage, int lineColour)
+        {
+            drawLine(streetImage, lineColour);
+            
+            // Now do web aliased line above this one
+            startY = startY - 100;
+            endY = endY - 100;
+            procStartY = startY + geoHeight;
+            procEndY = endY + geoHeight;
+
+            drawAliasedLine(streetImage, lineColour);
+            
+           // Now do my aliased line above this one
+            startY = startY - 100;
+            endY = endY - 100;
+            procStartY = startY + geoHeight;
+            procEndY = endY + geoHeight;
+
+            drawMyAliasedLine(streetImage, lineColour);
+        }
+        
         void drawLine(PImage streetImage, int lineColour)
         {
             // Draws a line between the start/end points
@@ -1045,24 +1087,18 @@ class StreetInfo
             int loc;
             float m;
         
-            // Convert into Proccessing pixel array x,y values (i.e. 0,0 is top LH corner)
-            int x1 = startX + geoWidth/2;
-            int y1 = startY + geoHeight;
-            int x2 = endX + geoWidth/2;
-            int y2 = endY + geoHeight;
-        
-            printToFile.printDebugLine(this, "Drawing line from x,y " + startX + "," + startY + " to x,y " + endX + "," + endY, 1);
-            printToFile.printDebugLine(this, "Also = line from x,y " + x1 + "," + y1 + " to x,y " + x2 + "," + y2, 1);
+            printToFile.printDebugLine(this, "Drawing line from x,y " + startX + "," + startY + " to x,y " + endX + "," + endY + " with colour " + lineColour, 1);
+            printToFile.printDebugLine(this, "Also = line from x,y " + procStartX + "," + procStartY + " to x,y " + procEndX + "," + procEndY + " with colour " + lineColour, 1);
         
             // Slope of line between 2 points
-            m = float(y2 - y1)/float(x2 - x1);
+            m = float(procEndY - procStartY)/float(procEndX - procStartX);
             printToFile.printDebugLine(this, " m = " + m, 1);
             // y = m(x - x1) + y1
             // Working from x1 to x2, recalculate y at that point and mark pixel at that location
-            for (i = 0; i < x2 - x1 + 1; i++)
+            for (i = 0; i < procEndX - procStartX + 1; i++)
             {
-                int x = x1 + i;
-                int y = int(m * (x - x1)) + y1;
+                int x = procStartX + i;
+                int y = int(m * (x - procStartX)) + procStartY;
                 loc = x + int(y * geoWidth);
                 // Only copy across the pixel if inside the image - otherwise report an error                
                 if ((loc > 0) && (loc < geoHeight * geoWidth))
@@ -1087,13 +1123,106 @@ class StreetInfo
             }
 
         }
+        
+        void drawMyAliasedLine(PImage streetImage, int lineColour)
+        {
+            // Draws a line between the start/end points
+            // Works out the y value ... and then does rough aliasing on pixels above
+            // Line is always 2 pixels which are full colour, and then partial colour on pixel above and below
+            // e.g. y = 12.3                 y = 12.8
+            //      y = 11 (70%)             y = 11 (20%)
+            //      y = 12 (100%)            y = 12 (100%)
+            //      y = 13 (100%)            y = 13 (100%)
+            //      y = 14 (30%)             y = 14 (80%)
+            int i;
+            int loc;
+            float m;
+        
+            printToFile.printDebugLine(this, "Drawing line from x,y " + startX + "," + startY + " to x,y " + endX + "," + endY + " with colour " + lineColour, 1);
+            printToFile.printDebugLine(this, "Also = line from x,y " + procStartX + "," + procStartY + " to x,y " + procEndX + "," + procEndY + " with colour " + lineColour, 1);
+        
+            // Slope of line between 2 points
+            m = float(procEndY - procStartY)/float(procEndX - procStartX);
+            printToFile.printDebugLine(this, " m = " + m, 1);
+            // y = m(x - x1) + y1
+            // Working from x1 to x2, recalculate y at that point and mark pixel at that location
+            for (i = 0; i < procEndX - procStartX + 1; i++)
+            {
+                int x = procStartX + i;
+                float y = (m * (x - procStartX)) + procStartY;
+                
+                float fractionY = y % 1;
+                int intY = int(y);
+                
+                color c;
+                
+                // Now colour the 4 pixels
+                // Top pixel
+                intY = intY - 1;
+                loc = x + (intY * geoWidth);
+                c = color (lineColour, int(map(1-fractionY, 0, 1, 0, 255)));
+                if ((loc > 0) && (loc < geoHeight * geoWidth))
+                {
+                    streetImage.pixels[loc] = c;
+                }
+                else
+                {
+                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
+                } 
+                
+                // 2nd pixel
+                intY++;
+                loc = x + (intY * geoWidth);
+                if ((loc > 0) && (loc < geoHeight * geoWidth))
+                {
+                    streetImage.pixels[loc] = lineColour;
+                }
+                else
+                {
+                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
+                }
+                /*
+                // 3rd pixel
+                intY++;
+                loc = x + (intY * geoWidth);
+                if ((loc > 0) && (loc < geoHeight * geoWidth))
+                {
+                    streetImage.pixels[loc] = lineColour;
+                }
+                else
+                {
+                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
+                } */  
+                
+                // Bottom pixel
+                intY++;
+                loc = x + (intY * geoWidth);
+                c = color (lineColour, int(map(fractionY, 0, 1, 0, 255)));
+                if ((loc > 0) && (loc < geoHeight * geoWidth))
+                {
+                    streetImage.pixels[loc] = c;
+                }
+                else
+                {
+                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
+                }     
+            }    
+        }
+        
+        // From the internets ...
         //https://en.wikipedia.org/wiki/Xiaolin_Wu's_line_algorithm
         void plot(PImage img, int x, int y, int lineColour, float brightness)
         {
             //plot the pixel at (x, y) with brightness c (where 0 ≤ c ≤ 1)
             int loc = x + (y * geoWidth);
             float a = map(brightness, 0, 1, 0, 255);
+            if(x < 20)
+            {
+                println("alpha is ", a, " line colour ", lineColour);
+            }
             color c = color(lineColour, a);
+            //color c = color(lineColour);
+            
             // Only copy across the pixel if inside the image - otherwise report an error                
             if ((loc > 0) && (loc < geoHeight * geoWidth))
             {
@@ -1137,10 +1266,13 @@ class StreetInfo
 
         void drawAliasedLine(PImage StreetImage, int lineColour)
         {
-            int x0 = startX;
-            int y0 = startY;
-            int x1 = endX;
-            int y1 = endY;
+            int x0 = procStartX;
+            int y0 = procStartY;
+            int x1 = procEndX;
+            int y1 = procEndY;
+            
+            printToFile.printDebugLine(this, "draw line from x,y " + procStartX + "," + procStartY + " to x,y " + procEndX + "," + procEndY + " with colour " + lineColour, 1);
+  
             
             boolean steep = abs(y1 - y0) > abs(x1 - x0);
     
@@ -1230,7 +1362,7 @@ class StreetInfo
                 }
             }
         }
-        
+               
         public int readStartX()
         {
             return startX;
@@ -1246,6 +1378,23 @@ class StreetInfo
         public int readEndY()
         {
             return endY;
+        }
+        
+        public int readProcStartX()
+        {
+            return procStartX;
+        }
+        public int readProcStartY()
+        {
+            return procStartY;
+        }
+        public int readProcEndX()
+        {
+            return procEndX;
+        }
+        public int readProcEndY()
+        {
+            return procEndY;
         }
     }
     
