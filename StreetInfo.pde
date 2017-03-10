@@ -34,10 +34,11 @@ class StreetInfo
     
     PImage summaryStreetSnap;
     
-    //final static int STREET_BACKGROUND = #BFBFBF; // grey
-    final static int STREET_BACKGROUND = #FFFFFF; // white
-    final static int PLATLINE_COLOUR =  #FF002B;
-    final static int PLATLINE_PURPLE = #9717E8;
+    final static int STREET_BACKGROUND = #BFBFBF; // grey
+    //final static int STREET_BACKGROUND = #FFFFFF; // white
+    //final static int PLATLINE_COLOUR =  #5CFF00; // green
+    final static int PLATLINE_COLOUR =  #FF0000; // red
+    final static int BOX_COLOUR = #000000; // black
     
      
     // constructor/initialise fields
@@ -307,6 +308,7 @@ class StreetInfo
     boolean readPlatlineInfo(JSONObject platformLinesObject, String geoFileName)
     {
         int i;
+        String platKey;
         // Now need to chain down through this object, extracting the x,y pairs from each 
         // As we don't know the string for each platline name, need to do it this clunky way                   
         List<String> platlineList = new ArrayList(platformLinesObject.keys());
@@ -317,6 +319,7 @@ class StreetInfo
             JSONObject platLineObj = Utils.readJSONObject(platformLinesObject, platlineList.get(i), true);
             if (Utils.readOkFlag() && platLineObj != null)
             {
+                platKey = platlineList.get(i);
                 JSONObject startObj = Utils.readJSONObject(platLineObj, "start", true);
                 if (Utils.readOkFlag() && startObj != null)
                 {
@@ -336,7 +339,7 @@ class StreetInfo
                                     if (Utils.readOkFlag())
                                     {
                                         // Add the pair of co-ordinates to list
-                                        platlines.add(new Platline(x1, y1, x2, y2));
+                                        platlines.add(new Platline(platKey, x1, y1, x2, y2));
                                     }
                                     else
                                     {
@@ -477,10 +480,7 @@ class StreetInfo
         // Draw on the plat lines
         for (i = 0; i < platlines.size(); i++)
         {
-            //platlines.get(i).drawLine(summaryStreetSnap, PLATLINE_COLOUR);
-            //platlines.get(i).drawAliasedLine(summaryStreetSnap, PLATLINE_COLOUR);
-            //platlines.get(i).drawMyAliasedLine(summaryStreetSnap, PLATLINE_COLOUR);
-            platlines.get(i).drawAllLine(summaryStreetSnap, PLATLINE_COLOUR);
+            platlines.get(i).drawAliasedLine(summaryStreetSnap, PLATLINE_COLOUR);
         } 
         // Update pixels
         summaryStreetSnap.updatePixels();
@@ -493,7 +493,13 @@ class StreetInfo
             if (!itemInfo.get(i).readSkipThisItem())
             {
                 // Item is patch/tree - so put image of spice tree at this x,y
-                // ??????treeCrossesPlatline = addSpiceTreeImage(itemInfo.get(i).readItemX(), itemInfo.get(i).readItemY());
+                treeCrossesPlatline = addSpiceTreeImage(itemInfo.get(i).readItemX(), itemInfo.get(i).readItemY());
+                
+                // If the platline has crossed the tree, then draw a box around the tree to draw attention to this fact
+                if (treeCrossesPlatline)
+                {
+                    drawBox(itemInfo.get(i).readItemX(), itemInfo.get(i).readItemY());
+                }
             }
             // Store the result - will include details of whether tree crosses the plat line or not
             itemResults.add(new SummaryChanges(itemInfo.get(i), treeCrossesPlatline));
@@ -508,9 +514,6 @@ class StreetInfo
             failNow = true;
             return false;
         }
-        
-        
-        // Check to see if plat lines intersect tree anywhere - and draw box around tree, log to output file
         
         // Output results into log file
         if (!logResultsToFile())
@@ -588,12 +591,6 @@ class StreetInfo
                         {
                             // Set flag, and colour plat line purple so can clearly see where interface
                             platlineCrossed = true;
-                            // Apply the same anti-aliasing as already present in this pixel
-                            // But then we lose the purple colour ...
-                            float aStreet = alpha(summaryStreetSnap.pixels[streetLoc]);
-                            color cStreet = color(PLATLINE_PURPLE, aStreet);
-                            //summaryStreetSnap.pixels[streetLoc] = cStreet;
-                            //summaryStreetSnap.pixels[streetLoc] = PLATLINE_PURPLE;
                             
                             // Merge the two pixels where they overlap
                             summaryStreetSnap.pixels[streetLoc] = lerpColor(spiceTreeImage.pixels[loc], summaryStreetSnap.pixels[streetLoc], 0.5);                            
@@ -607,19 +604,6 @@ class StreetInfo
             }
         }
         return platlineCrossed;
-    }
-    
-    
-    
-    boolean itemIsTree(int n)
-    {
-        //println("itemBeingProcessed is ", n);
-        if (itemInfo.get(n).readSkipThisItem())
-        {
-            // Item is not tree
-            return false;
-        }
-        return true;
     }
     
     void createBlankStreetImage()
@@ -651,164 +635,57 @@ class StreetInfo
          
          return true;
     }
-
-    /*
-    boolean saveStreetSummaryAsPNG(ArrayList<SummaryChanges> itemResults)
+ 
+    void drawBox(int x, int y)
     {
-        // Loops through the item results and draws in the matching fragments on a street PNG
-        // Skipped items are ignored
+        // Draws a box around the tree which is at the x,y passed into this function
         int i;
         int j;
-        int locItem;
-        int locStreet;
-        int topX;
-        int topY;
-        int bottomX;
-        int bottomY;
+        int loc;
+        int boxWidth = 348;
+        int boxHeight = 272;
+        int lineWidth = 3;
+        int lineColour = BOX_COLOUR;
         
+        // convert x,y to processing format after calculating the top LH corner relative to tree x,y
+        int topX = (x - 170) + geoWidth/2;
+        int topY = (y - 245) + geoHeight;
+       
+        printToFile.printDebugLine(this, "Passing in tree x,y " + x + "," + y + " which converts to top LH corner (processing) " + topX + "," + topY, 1);
         
-            
-        for (int n = 0; n < itemResults.size(); n++)
-        {   
-            if (itemResults.get(n).readResult() > SummaryChanges.SKIPPED)
+        // Draw top/bottom horizontal lines
+        for (i = 0; i < boxWidth + 1; i++)
+        {
+            for (j = 0; j < lineWidth; j++)
             {
-                // Only draw a square for items which are found to overlap the platline
-                
-                                
-                PImage bestFragment = bestItemMatchInfo.readColourItemFragment();
-                
-                if (bestFragment == null)
-                {
-                    printToFile.printDebugLine(this, "Unexpected error - failed to load best match colour/tinted item fragment " + bestItemMatchInfo.readBestMatchItemImageName(), 3);
-                    return false;
-                }
-                
-                // Need to account for the offset of the item image from item x,y in JSON
-                // The results array list contains the final x,y - whether original x,y (missing) or the new x,y (found)
-                topX = itemResults.get(n).readItemX() + geoWidth/2 + bestItemMatchInfo.readItemImageXOffset();
-                topY = itemResults.get(n).readItemY() + geoHeight + bestItemMatchInfo.readItemImageYOffset();                 
-
-                // Now copy the pixels of the fragment into the correct place - so can see mismatches easily
-                float a;
-                int boxColour;
-                int boxHeight;
-                int boxWidth;
-                int lineWidth;
-                                               
-                // If this is a missing item - then draw a red box around the item to show unsure - print %match also?
-                // For all other items draw a black box to show found
-                if (itemResults.get(n).readResult() == SummaryChanges.MISSING || itemResults.get(n).readResult() == SummaryChanges.MISSING_DUPLICATE)
-                {
-                    // Centre it on the original startX/StartY and have the size of the search radius
-                    boxColour = ITEM_MISSING_COLOUR;
-                    
-                    // Put a 9 pixel dot at the centre of the box
-                    locStreet = (topX-1) + ((topY-1) * geoWidth);
-                    summaryStreetSnap.pixels[locStreet] = boxColour;
-                    summaryStreetSnap.pixels[locStreet+1] = boxColour;
-                    summaryStreetSnap.pixels[locStreet+2] = boxColour;
-                    locStreet = (topX-1) + ((topY) * geoWidth);
-                    summaryStreetSnap.pixels[locStreet] = boxColour;
-                    summaryStreetSnap.pixels[locStreet+1] = boxColour;
-                    summaryStreetSnap.pixels[locStreet+2] = boxColour;
-                    locStreet = (topX-1) + ((topY+1) * geoWidth);
-                    summaryStreetSnap.pixels[locStreet] = boxColour;
-                    summaryStreetSnap.pixels[locStreet+1] = boxColour;
-                    summaryStreetSnap.pixels[locStreet+2] = boxColour;
-                    
-                    boxHeight = configInfo.readSearchRadius() * 2;
-                    boxWidth = configInfo.readSearchRadius() * 2;
-                    topX = topX - configInfo.readSearchRadius();
-                    topY = topY - configInfo.readSearchRadius();      
-                    lineWidth = 3;
-                }
-                else
-                {
-                    boxColour = ITEM_FOUND_COLOUR;
-                    boxHeight = bestFragment.height;
-                    boxWidth = bestFragment.width;
-                    lineWidth = 1;
-                }
-                bottomX = topX + boxWidth;
-                bottomY = topY + boxHeight;
-                
-                printToFile.printDebugLine(this, "Top x,y " + topX + "," + topY + " Bottom x,y " + bottomX + "," + bottomY + " boxHeight " + boxHeight + " boxWidth " + boxWidth + " lineWidth " + lineWidth, 1);
-                // Draw out the box
-                drawBox(summaryStreetSnap, topX-lineWidth, topY-lineWidth, bottomX+lineWidth, bottomY+lineWidth, lineWidth, boxColour);
-                
-                // Now fill in the fragment - for found items - it is inside the red box. But for missing items need to be to the side of the red box
-                int x;
-                int y;
-                if (itemResults.get(n).readResult() == SummaryChanges.MISSING || itemResults.get(n).readResult() == SummaryChanges.MISSING_DUPLICATE)
-                {
-                    x = itemResults.get(n).readItemX() + geoWidth/2 + bestItemMatchInfo.readItemImageXOffset() - bestFragment.width/2;
-                    // Need to work out the best place for the red box
-                    if (bestFragment.height > (topY + 2*lineWidth))
-                    {
-                        // Will go past top of image, so add to mid bottom of red box
-                        
-                        y = bottomY + lineWidth; 
-                        
-                    }
-                    else
-                    {
-                        y = topY - bestFragment.height - lineWidth;
-                    }
-                    // Draw red box for this sample
-                    boxHeight = bestFragment.height;
-                    boxWidth = bestFragment.width;
-                    lineWidth = 1;
-                    drawBox(summaryStreetSnap, x-lineWidth, y-lineWidth, x + boxWidth +lineWidth, y + boxHeight+lineWidth, lineWidth, boxColour);
-                }
-                else
-                {
-                    // In the found case, it matches the top corner of the box. No need to draw additional box
-                    x = topX;
-                    y = topY;
-                }
-                
-                for (i = 0; i < bestFragment.height; i++) 
-                {
-                    for (j = 0; j < bestFragment.width; j++)
-                    {
-                        locItem = j + (i * bestFragment.width);
-                        locStreet = (x + j) + ((y + i) * geoWidth);
-                        
-                        a = alpha(bestFragment.pixels[locItem]);
-                
-                        // Copy across the pixel to the street summary if it is not transparent
-                        if (a == 255)
-                        {
-                            // Copy across the pixel to the street summary image
-                            setPixel(summaryStreetSnap, locStreet, bestFragment.pixels[locItem]);
-                        }
-                    }        
-                }
+                // Top pixel
+                loc = topX + i + ((topY + j) * geoWidth);
+                setPixel(summaryStreetSnap, loc, lineColour);
+            
+                // Bottom pixel
+                //loc = topX + i + ((topY - j + bottomY - topY) * geoWidth);
+                loc = (topX + boxWidth - i) + ((topY + boxHeight - j) * geoWidth);
+                setPixel(summaryStreetSnap, loc, lineColour);
             }
-        } 
+        }
         
-         summaryStreetSnap.updatePixels();
-     
-         // save in work/named directory
-         String fname;
-         
-         fname = configInfo.readOutputStreetImagesPath() + File.separatorChar + streetName + "_summary.png";
-
-         printToFile.printDebugLine(this, "Saving summary image to " + fname, 1);
-         if (!summaryStreetSnap.save(fname))
-         {
-             printToFile.printDebugLine(this, "Unexpected error - failed to save street summary image to " + fname, 3);
-             return false;
-         }
-         
-         // Clean up this variable as no longer needed
-         summaryStreetSnap = null;
-         System.gc();
-
-         return true;   
-        
+        // Draw vertical lines
+        for (i = 0; i < boxHeight + 1; i++)
+        {            
+            for (j = 0; j < lineWidth; j++)
+            {
+                // Top pixel
+                //loc = topX + j + ((topY + i + 1) * geoWidth);
+                loc = topX + j + ((topY + i) * geoWidth);
+                setPixel(summaryStreetSnap, loc, lineColour);
+            
+                // Bottom pixel
+                //loc = bottomX - j + ((bottomY - i - 1) * geoWidth);
+                loc = topX + boxWidth - j + ((topY + boxHeight - i) * geoWidth);
+                setPixel(summaryStreetSnap, loc, lineColour);
+            }
+        }
     }
- */ 
     
     void setPixel(PImage image, int loc, int colour)
     {
@@ -970,6 +847,9 @@ class StreetInfo
     
     class Platline
     {
+        // JSON key
+        String platlineKey;
+        
         // Eleven co-ordinates
         int startX;
         int startY;
@@ -980,7 +860,7 @@ class StreetInfo
         int procStartY;
         int procEndX;
         int procEndY;
-        Platline(int x1, int y1, int x2, int y2)
+        Platline(String platKey, int x1, int y1, int x2, int y2)
         {
             // Want to save this so that the line always goes from left to right
             if (x1 > x2)
@@ -1003,128 +883,11 @@ class StreetInfo
             procStartY = startY + geoHeight;
             procEndX = endX + geoWidth/2;
             procEndY = endY + geoHeight;
+            
+            platlineKey = platKey;
         }
- /*
+          
         void drawAliasedLine(PImage streetImage, int lineColour)
-        {
-            // Draws a line between the start/end points
-            int i;
-            int loc;
-            float m;
-        
-            printToFile.printDebugLine(this, "Drawing line from x,y " + startX + "," + startY + " to x,y " + endX + "," + endY, 1);
-            printToFile.printDebugLine(this, "Also = line from x,y " + procStartX + "," + procStartY + " to x,y " + procEndX + "," + procEndY, 1);
-        
-            // Slope of line between 2 points
-            //m = (y2 - y1)/(x2 - x1);
-            m = (procEndY - procStartY)/(procEndX - procStartX);
-            
-            printToFile.printDebugLine(this, " m = " + m, 1);
-            // y = m(x - x1) + y1
-            // Working from x1 to x2, recalculate y at that point and mark pixel at that location
-            for (i = 0; i < procStartY - procStartX + 1; i++)
-            {
-                float x = procStartX + i;
-                float y = (m * (x - procStartX)) + procStartY;
-                
-                // Now try to do anti-aliased line
-                // Have the main pixel at y, but the depth of colour depends on how close it is to integer value. 
-                // Rest of fraction is given to pixel above or below depending.
-                
-                // alpha=255 = solid colour, alpha = 0 = transparent
-                                aSpiceTree = alpha(spiceTreeImage.pixels[loc]);               
-                
-                
-                loc = int(x + (y * geoWidth));
-                // Only copy across the pixel if inside the image - otherwise report an error                
-                if ((loc > 0) && (loc < geoHeight * geoWidth))
-                {
-                    streetImage.pixels[loc] = lineColour;
-                }
-                else
-                {
-                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
-                }
-                // Add second pixel below
-                loc = x + int((y + 1) * geoWidth);
-                // Only copy across the pixel if inside the image - otherwise report an error 
-                if ((loc > 0) && (loc < geoHeight * geoWidth))
-                {
-                    streetImage.pixels[loc] = lineColour;
-                }
-                else
-                {
-                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
-                }       
-            }
-        }
-*/  
-        void drawAllLine(PImage streetImage, int lineColour)
-        {
-            drawLine(streetImage, lineColour);
-            
-            // Now do web aliased line above this one
-            startY = startY - 100;
-            endY = endY - 100;
-            procStartY = startY + geoHeight;
-            procEndY = endY + geoHeight;
-
-            drawAliasedLine(streetImage, lineColour);
-            
-           // Now do my aliased line above this one
-            startY = startY - 100;
-            endY = endY - 100;
-            procStartY = startY + geoHeight;
-            procEndY = endY + geoHeight;
-
-            drawMyAliasedLine(streetImage, lineColour);
-        }
-        
-        void drawLine(PImage streetImage, int lineColour)
-        {
-            // Draws a line between the start/end points
-            int i;
-            int loc;
-            float m;
-        
-            printToFile.printDebugLine(this, "Drawing line from x,y " + startX + "," + startY + " to x,y " + endX + "," + endY + " with colour " + lineColour, 1);
-            printToFile.printDebugLine(this, "Also = line from x,y " + procStartX + "," + procStartY + " to x,y " + procEndX + "," + procEndY + " with colour " + lineColour, 1);
-        
-            // Slope of line between 2 points
-            m = float(procEndY - procStartY)/float(procEndX - procStartX);
-            printToFile.printDebugLine(this, " m = " + m, 1);
-            // y = m(x - x1) + y1
-            // Working from x1 to x2, recalculate y at that point and mark pixel at that location
-            for (i = 0; i < procEndX - procStartX + 1; i++)
-            {
-                int x = procStartX + i;
-                int y = int(m * (x - procStartX)) + procStartY;
-                loc = x + int(y * geoWidth);
-                // Only copy across the pixel if inside the image - otherwise report an error                
-                if ((loc > 0) && (loc < geoHeight * geoWidth))
-                {
-                    streetImage.pixels[loc] = lineColour;
-                }
-                else
-                {
-                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
-                }
-                // Add second pixel below
-                loc = x + int((y + 1) * geoWidth);
-                // Only copy across the pixel if inside the image - otherwise report an error 
-                if ((loc > 0) && (loc < geoHeight * geoWidth))
-                {
-                    streetImage.pixels[loc] = lineColour;
-                }
-                else
-                {
-                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
-                }       
-            }
-
-        }
-        
-        void drawMyAliasedLine(PImage streetImage, int lineColour)
         {
             // Draws a line between the start/end points
             // Works out the y value ... and then does rough aliasing on pixels above
@@ -1137,6 +900,8 @@ class StreetInfo
             int i;
             int loc;
             float m;
+            
+            color backgroundPixel = streetImage.pixels[0];
         
             printToFile.printDebugLine(this, "Drawing line from x,y " + startX + "," + startY + " to x,y " + endX + "," + endY + " with colour " + lineColour, 1);
             printToFile.printDebugLine(this, "Also = line from x,y " + procStartX + "," + procStartY + " to x,y " + procEndX + "," + procEndY + " with colour " + lineColour, 1);
@@ -1163,7 +928,8 @@ class StreetInfo
                 c = color (lineColour, int(map(1-fractionY, 0, 1, 0, 255)));
                 if ((loc > 0) && (loc < geoHeight * geoWidth))
                 {
-                    streetImage.pixels[loc] = c;
+                    //Take account of background street colour - otherwise get whitish colour on a grey street
+                    streetImage.pixels[loc] = lerpColor(c, backgroundPixel, 0.5);                   
                 }
                 else
                 {
@@ -1181,7 +947,7 @@ class StreetInfo
                 {
                     printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
                 }
-                /*
+                
                 // 3rd pixel
                 intY++;
                 loc = x + (intY * geoWidth);
@@ -1192,7 +958,7 @@ class StreetInfo
                 else
                 {
                     printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
-                } */  
+                }   
                 
                 // Bottom pixel
                 intY++;
@@ -1200,169 +966,35 @@ class StreetInfo
                 c = color (lineColour, int(map(fractionY, 0, 1, 0, 255)));
                 if ((loc > 0) && (loc < geoHeight * geoWidth))
                 {
-                    streetImage.pixels[loc] = c;
+                    //Take account of background street colour - otherwise get whitish colour on a grey street
+                    streetImage.pixels[loc] = lerpColor(c, backgroundPixel, 0.5);
                 }
                 else
                 {
                     printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
                 }     
-            }    
+            }
+            
+            // Mark start/end pixel with black line
+            drawVerticalLine(streetImage, procStartX, procStartY, 8, #000000);
+            drawVerticalLine(streetImage, procEndX, procEndY, 8, #000000);
         }
         
-        // From the internets ...
-        //https://en.wikipedia.org/wiki/Xiaolin_Wu's_line_algorithm
-        void plot(PImage img, int x, int y, int lineColour, float brightness)
+        void drawVerticalLine(PImage streetImage, int x, int y, int lineHeight, int lineColour)
         {
-            //plot the pixel at (x, y) with brightness c (where 0 ≤ c ≤ 1)
-            int loc = x + (y * geoWidth);
-            float a = map(brightness, 0, 1, 0, 255);
-            if(x < 20)
-            {
-                println("alpha is ", a, " line colour ", lineColour);
-            }
-            color c = color(lineColour, a);
-            //color c = color(lineColour);
+            int loc;
+            int i;
             
-            // Only copy across the pixel if inside the image - otherwise report an error                
-            if ((loc > 0) && (loc < geoHeight * geoWidth))
+            for (i = 0 - lineHeight/2; i < lineHeight/2; i++)
             {
-                img.pixels[loc] = c;
-            }
-            else
-            {
-                printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
-            }            
-        }
-
-        // integer part of x
-        int ipart(float x)
-        {
-            return int(x);
-        }
-
-        // version of round function?
-        int roundFloat(float x)
-        {
-            return ipart(x + 0.5);
-        }
-        
-        // fractional part of x
-        float fpart(float x)
-        {
-            if (x < 0)
-            {
-                return (1 - (x - floor(x)));
-            }
-            else
-            {
-                return (x - floor(x));
-            }
-        }
-
-        float rfpart(float x)
-        {
-            return (1 - fpart(x));
-        }
-
-        void drawAliasedLine(PImage StreetImage, int lineColour)
-        {
-            int x0 = procStartX;
-            int y0 = procStartY;
-            int x1 = procEndX;
-            int y1 = procEndY;
-            
-            printToFile.printDebugLine(this, "draw line from x,y " + procStartX + "," + procStartY + " to x,y " + procEndX + "," + procEndY + " with colour " + lineColour, 1);
-  
-            
-            boolean steep = abs(y1 - y0) > abs(x1 - x0);
-    
-            if (steep)
-            {             
-                //swap(x0, y0)
-                x0 = startY;
-                y0 = startX;
-                //swap(x1, y1)
-                x1 = endY;
-                y1 = endX;
-            }
-
-            if (x0 > x1)
-            {
-                //swap(x0, x1)
-                x0 = endX;
-                x1 = startX;
-                //swap(y0, y1)
-                y0 = endY;
-                y1 = startY;
-            }
-    
-            float dx = x1 - x0;
-            float dy = y1 - y0;
-            float gradient = dy / dx;
-            if (dx == 0.0)
-            {
-                gradient = 1.0;
-            }
-
-            // handle first endpoint
-            int xend = roundFloat(x0);
-            float yend = y0 + gradient * (xend - x0);
-            float xgap = rfpart(x0 + 0.5);
-            int xpxl1 = xend; // this will be used in the main loop
-            int ypxl1 = ipart(yend);
-    
-            if (steep)
-            {
-                plot(StreetImage, ypxl1,   xpxl1, lineColour, rfpart(yend) * xgap);
-                plot(StreetImage, ypxl1+1, xpxl1, lineColour,  fpart(yend) * xgap);
-            }
-            else
-            {
-                plot(StreetImage, xpxl1, ypxl1  , lineColour, rfpart(yend) * xgap);
-                plot(StreetImage, xpxl1, ypxl1+1, lineColour,  fpart(yend) * xgap);
-            }
-
-            float intery = yend + gradient; // first y-intersection for the main loop
-    
-            // handle second endpoint
-            xend = roundFloat(x1);
-            yend = y1 + (gradient * (xend - x1));
-            xgap = fpart(x1 + 0.5);
-            int xpxl2 = xend; //this will be used in the main loop
-            int ypxl2 = ipart(yend);
-            if (steep)
-            {
-                plot(StreetImage, ypxl2  , xpxl2,lineColour,  rfpart(yend) * xgap);
-                plot(StreetImage, ypxl2+1, xpxl2,lineColour,   fpart(yend) * xgap);
-            }
-            else
-            {
-                plot(StreetImage, xpxl2, ypxl2, lineColour,  rfpart(yend) * xgap);
-                plot(StreetImage, xpxl2, ypxl2+1,lineColour,  fpart(yend) * xgap);
-            }
-    
-            // main loop
-            int x;
-            if (steep)
-            {
-                for (x = xpxl1 + 1; x < xpxl2; x++)
+                loc = x + ((y + i) * geoWidth);
+                if ((loc > 0) && (loc < geoHeight * geoWidth))
                 {
-                    plot(StreetImage, ipart(intery)  , x,lineColour,  rfpart(intery));
-                    plot(StreetImage, ipart(intery)+1, x,lineColour,   fpart(intery));
-                    intery = intery + gradient;
-                }
-            }
-            else
-            {
-                for (x = xpxl1 + 1; x < xpxl2; x++)
-                {
-                    plot(StreetImage, x, ipart(intery), lineColour,  rfpart(intery));
-                    plot(StreetImage, x, ipart(intery)+1,lineColour,  fpart(intery));
-                    intery = intery + gradient;
+                    streetImage.pixels[loc] = lineColour;
                 }
             }
         }
-               
+             
         public int readStartX()
         {
             return startX;
@@ -1378,23 +1010,6 @@ class StreetInfo
         public int readEndY()
         {
             return endY;
-        }
-        
-        public int readProcStartX()
-        {
-            return procStartX;
-        }
-        public int readProcStartY()
-        {
-            return procStartY;
-        }
-        public int readProcEndX()
-        {
-            return procEndX;
-        }
-        public int readProcEndY()
-        {
-            return procEndY;
         }
     }
     
