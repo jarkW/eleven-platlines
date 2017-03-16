@@ -523,6 +523,7 @@ class StreetInfo
                 if (treeCrossesPlatline)
                 {
                     drawBox(itemInfo.get(i).readItemX(), itemInfo.get(i).readItemY());
+                    printToFile.printDebugLine(this, "Drawing box around " + itemInfo.get(i).readItemTSID() + " " + itemInfo.get(i).readItemX() + "," + itemInfo.get(i).readItemY(), 1);
                 }
             }
             // Store the result - will include details of whether tree crosses the plat line or not
@@ -630,7 +631,7 @@ class StreetInfo
     
     boolean platlineCrossesSpiceTreeImage(int x, int y)
     {
-        // Add the spice tree image
+        // compare the spice tree image
         // For spice tree the matching fragment is at 126, 170 in the trant_spice_10_complete image, and has width 63, height 23, offset -34, -62
         
         // Need to convert the tree x,y to snap x,y
@@ -665,8 +666,10 @@ class StreetInfo
         //calculate the pixel which marks the x,y of the tree - will be coloured differently
         int treeXYLoc = treeX + (treeY * geoWidth);
             
-        // Now copy across the tree image, pixel by pixel - ignore transparent pixels
-        for (int pixelYPosition = 0; pixelYPosition < spiceTreeHeight; pixelYPosition++) 
+        // Now compare the tree image, pixel by pixel - ignore transparent pixels
+        // Need to take account of fact that trees may be close together and so canopies may overlap. Therefore only check the portion of the image from 12 px above the x,y
+        // Therefore start search at y = +220 = (62 - 12) + 170 
+        for (int pixelYPosition = 220; pixelYPosition < spiceTreeHeight; pixelYPosition++) 
         {
             for (int pixelXPosition = 0; pixelXPosition < spiceTreeWidth; pixelXPosition++) 
             {  
@@ -678,7 +681,7 @@ class StreetInfo
                     streetLoc = (topX + pixelXPosition) + ((topY + pixelYPosition) * geoWidth);
                     if (streetLoc == treeXYLoc)
                     {
-                        // Mark the spot with a green pixel
+                        // check for a green pixel
                         if (summaryStreetSnap.pixels[streetLoc] != #00FF0A)
                         {
                             // Street pixel is not green as expected
@@ -1127,7 +1130,7 @@ class StreetInfo
             int i;
             float m;
         
-            printToFile.printDebugLine(this, "Drawing line from x,y " + startX + "," + startY + " to x,y " + endX + "," + endY + " with colour " + lineColour, 1);
+            printToFile.printDebugLine(this, "Drawing line " + platlineKey + " from x,y " + startX + "," + startY + " to x,y " + endX + "," + endY + " with colour " + lineColour, 1);
             printToFile.printDebugLine(this, "Also = line from x,y " + procStartX + "," + procStartY + " to x,y " + procEndX + "," + procEndY + " with colour " + lineColour, 1);
         
             // Slope of line between 2 points
@@ -1190,7 +1193,6 @@ class StreetInfo
                     if (backgroundPixel != color(STREET_BACKGROUND))
                     {
                         // Plat line is cross the tree so set flag
-                        crossesRoot = true;
                     }
                     //Take account of background street colour - otherwise get whitish colour on a grey street
                     streetImage.pixels[loc] = lerpColor(c, backgroundPixel, 0.5);
