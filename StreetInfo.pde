@@ -34,11 +34,18 @@ class StreetInfo
     
     PImage summaryStreetSnap;
     
+    boolean usingBlankStreet;
+    
     final static int STREET_BACKGROUND = #BFBFBF; // grey
     //final static int STREET_BACKGROUND = #FFFFFF; // white
     //final static int PLATLINE_COLOUR =  #5CFF00; // green
     final static int PLATLINE_COLOUR =  #FF0000; // red
-    final static int BOX_COLOUR = #000000; // black
+    //final static int BOX_COLOUR = #000000; // black
+    final static int BOX_COLOUR = #952FEA; // same colour as spice tree
+    
+    // See sketch_reshade_spice_tree for actual values used
+    final static int SPICE_TREE = #952FEA;
+    final static int SPICE_TREE_ROOTS = #B98DDE;
     
      
     // constructor/initialise fields
@@ -67,6 +74,8 @@ class StreetInfo
         geoWidth = 0;
         
         summaryStreetSnap = null;
+        
+        usingBlankStreet = false;
     }
     
     boolean readStreetData()
@@ -464,19 +473,30 @@ class StreetInfo
     {
         int i;
         
-        // Create blank street image
-        createBlankStreetImage();
+        // First load up the street image or a blank street (if no snaps directory supplied)
+        if (configInfo.readStreetSnapPath().length() == 0)
+        {
+            // Create blank street image
+            createBlankStreetImage();            
+        }
+        else
+        {    
+            // Copy from the first street image found - if a problem is encountered, then a blank street will be created
+            createStreetImage();
+        }
         
-/*        
-                        // Save an image of the street  - with items marked with different coloured squares to show if found/missing
-                // Allows the user to quickly see what was found/missing against a street snap
-                if (!saveStreetFoundSummaryAsPNG(itemResults))
-                {
-                    failNow = true;
-                    return false;
-                }
-  */    
-  
+        // Draw on tree
+        // Cycle through all items - if it is a tree then put spice tree at appropriate x,y
+        for (i = 0; i < itemInfo.size(); i++) 
+        {
+            if (!itemInfo.get(i).readSkipThisItem())
+            {
+                // Item is patch/tree - so put image of spice tree at this x,y
+                addSpiceTreeImage(itemInfo.get(i).readItemX(), itemInfo.get(i).readItemY());
+            }
+        }
+        summaryStreetSnap.updatePixels();
+      
         // Draw on the plat lines
         for (i = 0; i < platlines.size(); i++)
         {
@@ -485,15 +505,19 @@ class StreetInfo
         // Update pixels
         summaryStreetSnap.updatePixels();
         
-        // Cycle through all items - if it is a tree then put spice tree at appropriate x,y
-        // could use sortResultsByXY(itemResults); - if each result contains the x,y tsid etc and only had trees in this array?
+        // Now need to identify all the trees which had platlines crossing
+        // We know which platlines crossed tree roots - but isn't much use now. 
+        // Inefficient - but simplest way is look at all the spice tree pixels again - if they don't match the original, then must have been overwritten
+        // with a plat line
+        
+        // Cycle through all items - check each tree location
         for (i = 0; i < itemInfo.size(); i++) 
         {
             boolean treeCrossesPlatline = false;
             if (!itemInfo.get(i).readSkipThisItem())
             {
                 // Item is patch/tree - so put image of spice tree at this x,y
-                treeCrossesPlatline = addSpiceTreeImage(itemInfo.get(i).readItemX(), itemInfo.get(i).readItemY());
+                treeCrossesPlatline = platlineCrossesSpiceTreeImage(itemInfo.get(i).readItemX(), itemInfo.get(i).readItemY());
                 
                 // If the platline has crossed the tree, then draw a box around the tree to draw attention to this fact
                 if (treeCrossesPlatline)
@@ -504,9 +528,6 @@ class StreetInfo
             // Store the result - will include details of whether tree crosses the plat line or not
             itemResults.add(new SummaryChanges(itemInfo.get(i), treeCrossesPlatline));
         }
-        
-        // Update pixels
-        summaryStreetSnap.updatePixels();
         
         // Save file
         if (!saveStreetImage())
@@ -546,7 +567,7 @@ class StreetInfo
        return true;
     }
     
-    boolean addSpiceTreeImage(int x, int y)
+    void addSpiceTreeImage(int x, int y)
     {
         // Add the spice tree image
         // For spice tree the matching fragment is at 126, 170 in the trant_spice_10_complete image, and has width 63, height 23, offset -34, -62
@@ -561,10 +582,23 @@ class StreetInfo
         float aSpiceTree;
         int loc;
         int streetLoc;
-        boolean platlineCrossed = false;
-        PImage spiceTreeImage = spiceTreePNGImage.readPNGImage();
-        int spiceTreeWidth = spiceTreePNGImage.readPNGImageWidth();
-        int spiceTreeHeight = spiceTreePNGImage.readPNGImageHeight();
+        
+        // Point to the correct spice tree image depending on the street background
+        PImage spiceTreeImage;
+        int spiceTreeWidth;
+        int spiceTreeHeight;
+        if (usingBlankStreet)
+        {
+            spiceTreeImage = spiceTreePNGImage.readPNGImage();
+            spiceTreeWidth = spiceTreePNGImage.readPNGImageWidth();
+            spiceTreeHeight = spiceTreePNGImage.readPNGImageHeight();
+        }
+        else
+        {
+            spiceTreeImage = spiceTreeOutlinePNGImage.readPNGImage();
+            spiceTreeWidth = spiceTreeOutlinePNGImage.readPNGImageWidth();
+            spiceTreeHeight = spiceTreeOutlinePNGImage.readPNGImageHeight();
+        }
         
         //calculate the pixel which marks the x,y of the tree - will be coloured differently
         int treeXYLoc = treeX + (treeY * geoWidth);
@@ -587,17 +621,76 @@ class StreetInfo
                     }
                     else
                     {
-                        if (summaryStreetSnap.pixels[streetLoc] != STREET_BACKGROUND)
+                        summaryStreetSnap.pixels[streetLoc] = spiceTreeImage.pixels[loc];
+                    }
+                }
+            }
+        }
+    }
+    
+    boolean platlineCrossesSpiceTreeImage(int x, int y)
+    {
+        // Add the spice tree image
+        // For spice tree the matching fragment is at 126, 170 in the trant_spice_10_complete image, and has width 63, height 23, offset -34, -62
+        
+        // Need to convert the tree x,y to snap x,y
+        int treeX = x + geoWidth/2;
+        int treeY = y + geoHeight; 
+        
+        int topX = treeX - 34 - 126;
+        int topY = treeY - 62 - 170;
+        
+        float aSpiceTree;
+        int loc;
+        int streetLoc;
+        boolean platlineCrossed = false;
+        
+        // Point to the correct spice tree image depending on the street background
+        PImage spiceTreeImage;
+        int spiceTreeWidth;
+        int spiceTreeHeight;
+        if (usingBlankStreet)
+        {
+            spiceTreeImage = spiceTreePNGImage.readPNGImage();
+            spiceTreeWidth = spiceTreePNGImage.readPNGImageWidth();
+            spiceTreeHeight = spiceTreePNGImage.readPNGImageHeight();
+        }
+        else
+        {
+            spiceTreeImage = spiceTreeOutlinePNGImage.readPNGImage();
+            spiceTreeWidth = spiceTreeOutlinePNGImage.readPNGImageWidth();
+            spiceTreeHeight = spiceTreeOutlinePNGImage.readPNGImageHeight();
+        }
+        
+        //calculate the pixel which marks the x,y of the tree - will be coloured differently
+        int treeXYLoc = treeX + (treeY * geoWidth);
+            
+        // Now copy across the tree image, pixel by pixel - ignore transparent pixels
+        for (int pixelYPosition = 0; pixelYPosition < spiceTreeHeight; pixelYPosition++) 
+        {
+            for (int pixelXPosition = 0; pixelXPosition < spiceTreeWidth; pixelXPosition++) 
+            {  
+                loc = pixelXPosition + (pixelYPosition * spiceTreeWidth);                
+                aSpiceTree = alpha(spiceTreeImage.pixels[loc]);               
+                if (aSpiceTree == 255)
+                {
+                    // Non-transparent pixel                   
+                    streetLoc = (topX + pixelXPosition) + ((topY + pixelYPosition) * geoWidth);
+                    if (streetLoc == treeXYLoc)
+                    {
+                        // Mark the spot with a green pixel
+                        if (summaryStreetSnap.pixels[streetLoc] != #00FF0A)
                         {
-                            // Set flag, and colour plat line purple so can clearly see where interface
+                            // Street pixel is not green as expected
                             platlineCrossed = true;
-                            
-                            // Merge the two pixels where they overlap
-                            summaryStreetSnap.pixels[streetLoc] = lerpColor(spiceTreeImage.pixels[loc], summaryStreetSnap.pixels[streetLoc], 0.5);                            
                         }
-                        else
+                    }
+                    else
+                    {
+                        if (summaryStreetSnap.pixels[streetLoc] != spiceTreeImage.pixels[loc])
                         {
-                            summaryStreetSnap.pixels[streetLoc] = spiceTreeImage.pixels[loc];
+                            // Street pixel does not match the spice tree image - so been modified by plat line crossing it
+                            platlineCrossed = true;
                         }
                     }
                 }
@@ -615,6 +708,133 @@ class StreetInfo
         {
             summaryStreetSnap.pixels[i] = STREET_BACKGROUND; 
         }
+        
+        usingBlankStreet = true;
+    }
+    
+    void createStreetImage()
+    {
+        // Using the street name, load up the first street snap from the QA snap directory and use contents to populate the street image
+        // Are only interested in street snaps with the correct h/w which matches the values read from the json geo file
+        // If there are problems, then just create a blank street image instead. 
+
+        String [] snapFilenames = Utils.loadFilenames(configInfo.readStreetSnapPath(), streetName, ".png");
+
+        if (snapFilenames == null || snapFilenames.length == 0)
+        {
+            printToFile.printDebugLine(this, "Create blank street image - No valid street image files found in " + configInfo.readStreetSnapPath() + " for street " + streetName + " in directory " + configInfo.readStreetSnapPath(), 3);
+            printToFile.printOutputLine("Create blank street image - No valid street image files found for " + streetName + "(" + streetTSID + ")" + " in directory " + configInfo.readStreetSnapPath() + "\n");
+            createBlankStreetImage();
+            return;
+        }
+        
+        
+        int i;
+        StringList archiveSnapFilenames = new StringList();
+ 
+        for (i = 0; i < snapFilenames.length; i++)
+        {
+            // Go through each name - only keep valid names for this street.
+            // Stripping out files which start with the same name, but which are other streets
+            // e.g. Tallish Crest/ Tallish Crest Subway Station. Otherwise the size check later 
+            // will fail as these streets are different sizes.
+
+            // First deal with specific cases of towers on streets
+            // Aranna: Sabudana Drama - Sabudana Drama Towers - Sabudana Drama Towers Basement (unique) - Sabudana Drama Towers Floor 1-4 (unique)
+            // Besara: Egret Taun - Egret Taun Towers - Egret Taun Towers Basement (unique) - Egret Taun Towers Floor 1-3 (unique)
+            // Bortola: Hauki Seeks - Hauki Seeks Manor - Hauki Seeks Manor Basement (unique) - Hauki Seeks Manor Floor 1-3 (unique)
+            // Groddle Meadow: Gregarious Towers - Gregarious Towers Basement (unique) - Gregarious Towers Floor 1-3 (unique)
+            // Muufo: Hakusan Heaps - Hakusan Heaps Towers - Hakusan Heaps Towers Basement (unique) - Hakusan Heaps Towers Floor 1-2 (unique)
+            if ((streetName.equals("Sabudana Drama")) || (streetName.equals("Egret Taun")) ||
+                (streetName.equals("Hauki Seeks")) || (streetName.equals("Hakusan Heaps")))
+            {
+                // Need to strip out any of the Tower/Manor streets
+                if ((snapFilenames[i].indexOf("Towers") == -1) && (snapFilenames[i].indexOf("Manor") == -1))
+                {
+                    // Is the actual street we want, so copy
+                    archiveSnapFilenames.append(snapFilenames[i]);
+                }
+            }
+            if ((streetName.equals("Sabudana Drama Towers")) || (streetName.equals("Egret Taun Towers")) ||
+                (streetName.equals("Hauki Seeks Manor")) || (streetName.equals("Hakusan Heaps Towers")) ||
+                (streetName.equals("Gregarious Towers")))
+            {
+                // Need to strip out the Basement/Floors streets
+                if ((snapFilenames[i].indexOf("asement") == -1) && (snapFilenames[i].indexOf("loor") == -1))
+                {
+                    // Is the actual street we want, so copy
+                    archiveSnapFilenames.append(snapFilenames[i]);
+                } 
+            }       
+            else if (streetName.indexOf("Subway") == -1)
+            { 
+                // Street is not a subway - so remove any subway snaps
+                if (snapFilenames[i].indexOf("Subway") == -1)
+                {
+                    // Snap is not the subway station, so keep
+                    archiveSnapFilenames.append(snapFilenames[i]);
+                }
+                
+            }
+            else
+            {
+                // Valid subway street snap so keep
+                archiveSnapFilenames.append(snapFilenames[i]);
+
+            }
+        }
+        
+        if (archiveSnapFilenames.size() == 0)
+        {
+            printToFile.printDebugLine(this, "Build blank street - No files found in rebuilt snap array = BUG for street " + streetName, 3);
+            createBlankStreetImage();
+            return;
+        } 
+        
+        // Now copy across the first street snap into our street image file           
+        for (i = 0; i < archiveSnapFilenames.size(); i++) 
+        {
+            // This currently never returns an error
+            PNGFile streetSnap = new PNGFile(archiveSnapFilenames.get(i), true);
+            
+            // load up the image
+            if (!streetSnap.setupPNGImage())
+            {
+                printToFile.printDebugLine(this, "Failed to load up image " + archiveSnapFilenames.get(i), 3);
+            }
+            else
+            {
+                // Loaded up street - now check if it is the right size
+                if (streetSnap.readPNGImageWidth() != geoWidth || streetSnap.readPNGImageHeight() != geoHeight)
+                {
+                    printToFile.printDebugLine(this, "Skipping street snap " + streetSnap.readPNGImageName() + " because resolution is not " + 
+                                                geoWidth + "x" + geoHeight + " pixels", 2);
+                    streetSnap.unloadPNGImage();
+                }
+                else
+                {
+                    // street is good - so can be copied
+                    //summaryStreetSnap = streetSnap.readPNGImage();
+                    printToFile.printDebugLine(this, "Using street snap " + streetSnap.readPNGImageName() + " for street background ", 1);
+                    summaryStreetSnap = createImage(geoWidth, geoHeight, ARGB);
+                    summaryStreetSnap.loadPixels();
+                    for (int j = 0; j < summaryStreetSnap.pixels.length; j++) 
+                    {
+                        summaryStreetSnap.pixels[j] = streetSnap.readPNGImage().pixels[j]; 
+                    } 
+                    summaryStreetSnap.loadPixels();
+                    
+                    // Unload this as no longer needed
+                    streetSnap.unloadPNGImage();
+                    return;
+                }                
+            }
+        }  
+        
+        // Only reach here is not able to find snap of the right size - then need to create blank street
+        printToFile.printDebugLine(this, "Create blank street for " + streetName + " as unable to find valid street snap of correct size to use as background ", 1);
+        createBlankStreetImage();
+        return;
     }
     
     boolean saveStreetImage()
@@ -860,6 +1080,9 @@ class StreetInfo
         int procStartY;
         int procEndX;
         int procEndY;
+        
+        boolean crossesTreeRoot;
+        
         Platline(String platKey, int x1, int y1, int x2, int y2)
         {
             // Want to save this so that the line always goes from left to right
@@ -885,11 +1108,15 @@ class StreetInfo
             procEndY = endY + geoHeight;
             
             platlineKey = platKey;
+            
+            crossesTreeRoot = false;
+            
         }
           
         void drawAliasedLine(PImage streetImage, int lineColour)
         {
-            // Draws a line between the start/end points
+            // Draws a line between the start/end points - if it crosses the spice tree then returns true
+            
             // Works out the y value ... and then does rough aliasing on pixels above
             // Line is always 2 pixels which are full colour, and then partial colour on pixel above and below
             // e.g. y = 12.3                 y = 12.8
@@ -898,10 +1125,7 @@ class StreetInfo
             //      y = 13 (100%)            y = 13 (100%)
             //      y = 14 (30%)             y = 14 (80%)
             int i;
-            int loc;
             float m;
-            
-            color backgroundPixel = streetImage.pixels[0];
         
             printToFile.printDebugLine(this, "Drawing line from x,y " + startX + "," + startY + " to x,y " + endX + "," + endY + " with colour " + lineColour, 1);
             printToFile.printDebugLine(this, "Also = line from x,y " + procStartX + "," + procStartY + " to x,y " + procEndX + "," + procEndY + " with colour " + lineColour, 1);
@@ -918,66 +1142,81 @@ class StreetInfo
                 
                 float fractionY = y % 1;
                 int intY = int(y);
-                
-                color c;
-                
+                                
                 // Now colour the 4 pixels
                 // Top pixel
-                intY = intY - 1;
-                loc = x + (intY * geoWidth);
-                c = color (lineColour, int(map(1-fractionY, 0, 1, 0, 255)));
-                if ((loc > 0) && (loc < geoHeight * geoWidth))
+                if (colourPixel(streetImage, x, intY - 1, color (lineColour, int(map(1-fractionY, 0, 1, 0, 255)))))
                 {
-                    //Take account of background street colour - otherwise get whitish colour on a grey street
-                    streetImage.pixels[loc] = lerpColor(c, backgroundPixel, 0.5);                   
+                    crossesTreeRoot = true;
                 }
-                else
-                {
-                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
-                } 
-                
+                              
                 // 2nd pixel
-                intY++;
-                loc = x + (intY * geoWidth);
-                if ((loc > 0) && (loc < geoHeight * geoWidth))
+                if (colourPixel(streetImage, x, intY, lineColour))
                 {
-                    streetImage.pixels[loc] = lineColour;
-                }
-                else
-                {
-                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
+                    crossesTreeRoot = true;
                 }
                 
                 // 3rd pixel
-                intY++;
-                loc = x + (intY * geoWidth);
-                if ((loc > 0) && (loc < geoHeight * geoWidth))
+                if (colourPixel(streetImage, x, intY + 1, lineColour))
                 {
-                    streetImage.pixels[loc] = lineColour;
-                }
-                else
-                {
-                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
-                }   
+                    crossesTreeRoot = true;
+                }  
                 
                 // Bottom pixel
-                intY++;
-                loc = x + (intY * geoWidth);
-                c = color (lineColour, int(map(fractionY, 0, 1, 0, 255)));
-                if ((loc > 0) && (loc < geoHeight * geoWidth))
+                if (colourPixel(streetImage, x, intY + 2, color (lineColour, int(map(fractionY, 0, 1, 0, 255)))))
                 {
-                    //Take account of background street colour - otherwise get whitish colour on a grey street
-                    streetImage.pixels[loc] = lerpColor(c, backgroundPixel, 0.5);
+                    crossesTreeRoot = true;
                 }
-                else
-                {
-                    printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
-                }     
             }
             
             // Mark start/end pixel with black line
             drawVerticalLine(streetImage, procStartX, procStartY, 8, #000000);
             drawVerticalLine(streetImage, procEndX, procEndY, 8, #000000);
+            
+            return;
+        }
+        
+        boolean colourPixel(PImage streetImage, int x, int y, color c)
+        {
+            boolean crossesRoot = false;
+            color backgroundPixel;
+            int loc = x + (y * geoWidth); 
+            
+            if ((loc > 0) && (loc < geoHeight * geoWidth))
+            {
+                backgroundPixel = streetImage.pixels[loc];
+                if (usingBlankStreet)
+                {
+                    if (backgroundPixel != color(STREET_BACKGROUND))
+                    {
+                        // Plat line is cross the tree so set flag
+                        crossesRoot = true;
+                    }
+                    //Take account of background street colour - otherwise get whitish colour on a grey street
+                    streetImage.pixels[loc] = lerpColor(c, backgroundPixel, 0.5);
+                }
+                else
+                {
+                    if (backgroundPixel == color(SPICE_TREE) || backgroundPixel == color(SPICE_TREE_ROOTS))
+                    {
+                        // Plat line is cross the tree so set flag
+                        crossesRoot = true;
+                        // Merge red line with purple (???)
+                        streetImage.pixels[loc] = lerpColor(c, backgroundPixel, 0.5);
+                    }
+                    else
+                    {
+                        // Just draw red line across scenery
+                        streetImage.pixels[loc] = c;
+                    }
+                }
+            }
+            else
+            {
+                printToFile.printDebugLine(this, "ERROR Attempting to write to pixel at " + x + "," + y, 3);
+            }
+            
+            return crossesRoot;
         }
         
         void drawVerticalLine(PImage streetImage, int x, int y, int lineHeight, int lineColour)
@@ -1010,6 +1249,11 @@ class StreetInfo
         public int readEndY()
         {
             return endY;
+        }
+        
+        public boolean readcrossesTreeRoot()
+        {
+            return crossesTreeRoot;
         }
     }
     

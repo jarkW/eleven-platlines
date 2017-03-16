@@ -42,6 +42,7 @@ OutputFile infoOutput;
 
 // Spice tree image
 PNGFile spiceTreePNGImage;
+PNGFile spiceTreeOutlinePNGImage;
 
 // States - used to determine next actions
 int nextAction;
@@ -193,8 +194,8 @@ public void draw()
                 return;
             }
             
-            // Load up image of spice tree
-            spiceTreePNGImage = new PNGFile("trant_spice_10_root_clearance.png");
+            // Load up images of spice tree - the purple one is used when a street snap forms the background
+            spiceTreePNGImage = new PNGFile("trant_spice_10_root_clearance.png", false);            
             if (!spiceTreePNGImage.setupPNGImage())
             {
                 printToFile.printDebugLine(this, "Problems loading image of spice tree", 3);
@@ -202,7 +203,15 @@ public void draw()
                 failNow = true;
                 return;
             }
-
+            spiceTreeOutlinePNGImage = new PNGFile("trant_spice_outline_root_clearance.png", false);            
+            if (!spiceTreeOutlinePNGImage.setupPNGImage())
+            {
+                printToFile.printDebugLine(this, "Problems loading outline image of spice tree", 3);
+                displayMgr.showErrMsg("Problems loading outline image of spice tree", true);
+                failNow = true;
+                return;
+            }
+            
             // Set up connection to remote server if not using vagrant
             if (!configInfo.readUseVagrantFlag())
             {
@@ -393,6 +402,8 @@ public void draw()
             if (streetBeingProcessed >= configInfo.readTotalJSONStreetCount())
             {
                 // Reached end of list of streets - normal ending
+                // Print out final count of trees
+                infoOutput.printFinalCountData();
                 streetInfo = null;
                 System.gc();
                     

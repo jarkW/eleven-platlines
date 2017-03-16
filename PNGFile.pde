@@ -5,15 +5,18 @@ class PNGFile
     PImage PNGImage;
     int PNGImageHeight;
     int PNGImageWidth;
+    String imagePath;
+    boolean streetSnapFlag;
     
     boolean okFlag;
     
-    public PNGFile(String fname)
+    public PNGFile(String fname, boolean isStreet)
     {
         okFlag = true;
          
         PNGImageName = fname;
         PNGImage = null;
+        streetSnapFlag = isStreet;
     }
         
     public boolean setupPNGImage()
@@ -64,8 +67,14 @@ class PNGFile
             // Image has already been loaded into memory
             return true;
         } 
-        
-        fullFileName = dataPath(PNGImageName);
+        if (streetSnapFlag)
+        {
+            fullFileName = configInfo.readStreetSnapPath() + File.separatorChar + PNGImageName;
+        }
+        else
+        {
+            fullFileName = dataPath(PNGImageName);
+        }
 
         File file = new File(fullFileName);
         if (!file.exists())

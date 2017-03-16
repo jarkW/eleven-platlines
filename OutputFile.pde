@@ -4,6 +4,8 @@ class OutputFile
     boolean initFlag;
     String fname;
     boolean isDebugFile;
+    int totalGoodTreeCount;
+    int totalBadTreeCount;
         
     public OutputFile(String filename, boolean debugFileFlag)
     {
@@ -11,6 +13,8 @@ class OutputFile
         initFlag = false;
         fname = filename;
         isDebugFile = debugFileFlag;
+        totalGoodTreeCount = 0;
+        totalBadTreeCount = 0;
     }
         
     public boolean openOutputFile()
@@ -145,7 +149,18 @@ class OutputFile
         s = s + "\n";
         printLine(s); 
         
+        // Update global count
+        totalGoodTreeCount += treeGoodCount;
+        totalBadTreeCount += treeBadCount;
+        
         return true;
+    }
+    
+    public void printFinalCountData()
+    {
+        printLine("\n\n FINAL TREE COUNT\n");
+        printLine("Number of good trees is " + totalGoodTreeCount);
+        printLine("Number of BAD trees is " + totalBadTreeCount);
     }
        
     public void closeFile()
