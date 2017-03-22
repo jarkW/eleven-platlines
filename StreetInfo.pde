@@ -618,11 +618,12 @@ class StreetInfo
                     if (streetLoc == treeXYLoc)
                     {
                         // Mark the spot with a green pixel
-                        summaryStreetSnap.pixels[streetLoc] = #00FF0A;
+                        setPixel(summaryStreetSnap, streetLoc, #00FF0A);
                     }
                     else
                     {
-                        summaryStreetSnap.pixels[streetLoc] = spiceTreeImage.pixels[loc];
+                        // Copy across the tree pixel
+                        setPixel(summaryStreetSnap, streetLoc, spiceTreeImage.pixels[loc]);
                     }
                 }
             }
@@ -682,7 +683,7 @@ class StreetInfo
                     if (streetLoc == treeXYLoc)
                     {
                         // check for a green pixel
-                        if (summaryStreetSnap.pixels[streetLoc] != #00FF0A)
+                        if (CheckIfDifferentPixel(summaryStreetSnap, streetLoc, #00FF0A))
                         {
                             // Street pixel is not green as expected
                             platlineCrossed = true;
@@ -690,7 +691,7 @@ class StreetInfo
                     }
                     else
                     {
-                        if (summaryStreetSnap.pixels[streetLoc] != spiceTreeImage.pixels[loc])
+                        if (CheckIfDifferentPixel(summaryStreetSnap, streetLoc, spiceTreeImage.pixels[loc]))
                         {
                             // Street pixel does not match the spice tree image - so been modified by plat line crossing it
                             platlineCrossed = true;
@@ -920,6 +921,24 @@ class StreetInfo
             // Is valid pixel
             image.pixels[loc] = colour;
         }
+    }
+    
+    boolean CheckIfDifferentPixel(PImage image, int loc, int colour)
+    {
+        // Only attempt to copy across the pixel if it in a valid place
+        // Only need to use this function when generating boxes around items as usually
+        // we know we are in range
+        boolean isDifferent = false;
+        if ((loc > 0) && (loc < image.height * image.width))
+        {
+            // Is this pixel a different colour?
+            if (image.pixels[loc] != colour)
+            {
+                isDifferent = true;
+            }
+        }
+        // If the pixel is outside the range, then just return false - result will be ignore
+        return isDifferent;
     }
 
     boolean getJSONFile(String TSID)
